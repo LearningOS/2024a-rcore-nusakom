@@ -5,11 +5,18 @@ use crate::{
     timer::get_time_us,
 };
 
+use crate::config::MAX_SYSCALL_NUM;
+use crate::task::TaskStatus;
+
 #[repr(C)]
 #[derive(Debug)]
-pub struct TimeVal {
-    pub sec: usize,
-    pub usec: usize,
+pub struct TaskInfo {
+    /// Task status in its life cycle
+    pub status: TaskStatus,
+    /// The numbers of syscall called by task
+    pub syscall_times: [u32; MAX_SYSCALL_NUM],
+    /// Total running time of task
+    pub time: usize,
 }
 
 /// Task information

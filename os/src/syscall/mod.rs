@@ -21,6 +21,7 @@ use process::*;
 use crate::timer::get_time;
 use crate::task::TaskStatus;
 use crate::task::update_syscall_times;
+use crate::task::{update_syscall_times, TaskStatus};
 
 /// Handles the system call exception based on the `syscall_id` and its arguments.
 ///
@@ -32,16 +33,14 @@ use crate::task::update_syscall_times;
 /// Returns an `isize`, which may represent a return value or an error code.
 pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
     update_syscall_times(syscall_id);
+
     match syscall_id {
         SYS_WRITE => sys_write(args[0], args[1] as *const u8, args[2]),
         SYS_EXIT => sys_exit(args[0] as i32),
         SYS_YIELD => sys_yield(),
         SYS_GET_TIME => sys_get_time(args[0] as *mut TimeVal, args[1]),
         SYS_TASK_INFO => sys_task_info(args[0] as *mut TaskInfo),
-        _ => {
-            // Return an error code for unsupported syscalls instead of panicking
-            println!("Unsupported syscall_id: {}", syscall_id);
-            -1 // Error code indicating an unsupported syscall
+        _ => panic!("Unsupported syscall_id: {}", syscall_id),
         }
     }
 }
