@@ -203,6 +203,7 @@ pub fn update_syscall_times(syscall_id: usize) {
     TASK_MANAGER.update_syscall_times(syscall_id);
 }
 
+
 /// Get the current 'Running' task's time between the system call time and the first time the task is scheduled
 pub fn get_task_time() -> usize {
     TASK_MANAGER.get_task_time()
