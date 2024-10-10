@@ -5,7 +5,7 @@
 //!
 //! A single global instance of [`TaskManager`] called `TASK_MANAGER` controls
 //! all the tasks in the operating system.
-//!
+//! 
 //! Be careful when you see `__switch` ASM function in `switch.S`. Control flow around this function
 //! might not be what you expect.
 
@@ -19,16 +19,18 @@ use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
 use lazy_static::*;
 use switch::__switch;
-pub use task::{TaskControlBlock, TaskStatus};
+pub use task::{TaskControlBlock, TaskStatus, TaskInfo};
 
 pub use context::TaskContext;
 
+const MAX_SYSCALL_NUM: usize = 500;
+
 /// The task manager, where all the tasks are managed.
-///
+/// 
 /// Functions implemented on `TaskManager` deals with all task state transitions
 /// and task context switching. For convenience, you can find wrappers around it
 /// in the module level.
-///
+/// 
 /// Most of `TaskManager` are hidden behind the field `inner`, to defer
 /// borrowing checks to runtime. You can see examples on how to use `inner` in
 /// existing functions on `TaskManager`.
@@ -54,10 +56,13 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
+            syscall_times: [0; MAX_SYSCALL_NUM], // 初始化系统调用次数
+            start_time: 0, // 初始化开始运行的时间
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
             task.task_status = TaskStatus::Ready;
+            task.start_time = get_time(); // 设置任务开始运行的时间
         }
         TaskManager {
             num_app,
@@ -134,6 +139,24 @@ impl TaskManager {
         } else {
             panic!("All applications completed!");
         }
+    }
+
+    /// Get information about the current task
+    pub fn sys_task_info(&self, ti: *mut TaskInfo) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+
+        // 更新系统调用次数
+        inner.tasks[current].syscall_times[410] += 1; // 410是syscall ID
+
+        // 填充任务信息
+        unsafe {
+            (*ti).status = TaskStatus::Running; // 当前任务状态为Running
+            (*ti).syscall_times.copy_from_slice(&inner.tasks[current].syscall_times); // 复制系统调用次数
+            (*ti).time = get_time() - inner.tasks[current].start_time; // 计算运行时间
+        }
+
+        0 // 成功返回0
     }
 }
 
