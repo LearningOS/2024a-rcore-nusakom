@@ -19,9 +19,14 @@ mod process;
 use fs::*;
 use process::*;
 use crate::timer::get_time;
-use crate::task::TaskStatus;
-use crate::task::update_syscall_times;
-use crate::task::{update_syscall_times, TaskStatus};
+use crate::task::{TaskStatus, update_syscall_times};
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct TimeVal {
+    pub sec: usize,
+    pub usec: usize,
+}
 
 /// Handles the system call exception based on the `syscall_id` and its arguments.
 ///
@@ -41,6 +46,5 @@ pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
         SYS_GET_TIME => sys_get_time(args[0] as *mut TimeVal, args[1]),
         SYS_TASK_INFO => sys_task_info(args[0] as *mut TaskInfo),
         _ => panic!("Unsupported syscall_id: {}", syscall_id),
-        }
-    }
+    } 
 }
