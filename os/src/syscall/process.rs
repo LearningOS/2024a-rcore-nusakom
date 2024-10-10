@@ -50,24 +50,8 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     0
 }
 
-/// Get current task information
-pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
+/// YOUR JOB: Finish sys_task_info to pass testcases
+pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
     trace!("kernel: sys_task_info");
-    // 获取任务管理器的引用
-    let task_manager = crate::task::TASK_MANAGER;
-    let current_task_info = unsafe { task_manager.inner.exclusive_access() };
-    let current_task_index = current_task_info.current_task;
-    let current_task = &current_task_info.tasks[current_task_index];
-
-    // 更新系统调用次数
-    current_task.syscall_times[410] += 1; // syscall ID: 410
-
-    // 填充任务信息
-    unsafe {
-        (*ti).status = TaskStatus::Running; // 当前任务状态为 Running
-        (*ti).syscall_times.copy_from_slice(&current_task.syscall_times); // 复制系统调用次数
-        (*ti).time = get_time_us() - current_task.start_time; // 计算运行时间，单位为微秒
-    }
-
-    0 // 成功返回 0
+    -1
 }
