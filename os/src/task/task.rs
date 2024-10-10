@@ -6,7 +6,7 @@ use super::TaskContext;
 /// The task control block (TCB) of a task.
 #[derive(Copy, Clone)]
 pub struct TaskControlBlock {
-    /// The task status in it's lifecycle
+    /// The task status in its lifecycle
     pub task_status: TaskStatus,
     /// The task context
     pub task_cx: TaskContext,
