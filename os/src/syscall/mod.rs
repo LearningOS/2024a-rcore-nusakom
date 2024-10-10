@@ -35,12 +35,16 @@ pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
     update_syscall_times(syscall_id);
 
     match syscall_id {
-        SYS_WRITE => sys_write(args[0], args[1] as *const u8, args[2]),
-        SYS_EXIT => sys_exit(args[0] as i32),
-        SYS_YIELD => sys_yield(),
-        SYS_GET_TIME => sys_get_time(args[0] as *mut TimeVal, args[1]),
-        SYS_TASK_INFO => sys_task_info(args[0] as *mut TaskInfo),
-        _ => panic!("Unsupported syscall_id: {}", syscall_id),
-        }
+        // handle different syscall ids here
+        0 => sys_exit(args[0] as i32),
+        1 => sys_yield(),
+        2 => sys_get_time(args[0] as *mut TimeVal, args[1]),
+        3 => sys_task_info(args[0] as *mut TaskInfo),
+        // add more syscalls as necessary
+        _ => {
+            // Handle unknown syscall
+            trace!("kernel: unknown syscall_id: {}", syscall_id);
+            -1
+         }
     }
 }
