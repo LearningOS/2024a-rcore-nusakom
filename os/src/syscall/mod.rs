@@ -18,7 +18,7 @@ mod process;
 
 use fs::*;
 use process::*;
-
+use crate::timer::get_time;
 use crate::task::TaskStatus;
 
 /// Handles the system call exception based on the `syscall_id` and its arguments.
