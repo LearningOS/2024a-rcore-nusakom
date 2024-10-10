@@ -20,6 +20,7 @@ use fs::*;
 use process::*;
 use crate::timer::get_time;
 use crate::task::TaskStatus;
+use crate::task::update_syscall_times;
 
 /// Handles the system call exception based on the `syscall_id` and its arguments.
 ///
@@ -43,20 +44,4 @@ pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
             -1 // Error code indicating an unsupported syscall
         }
     }
-}
-
-// New function to implement sys_task_info
-fn sys_task_info(ti: *mut TaskInfo) -> isize {
-    // Assuming we have a way to get the current task manager
-    let current_task_info = unsafe { task_manager.inner.exclusive_access() };
-
-    // Fill the TaskInfo structure
-    let current_task = &current_task_info.tasks[current_task_info.current_task];
-    unsafe {
-        (*ti).status = TaskStatus::Running;
-        (*ti).syscall_times = current_task.syscall_times; // Get syscall counts
-        (*ti).time = get_time() - current_task.start_time; // Calculate elapsed time
-    }
-
-    0 // Return success
 }
