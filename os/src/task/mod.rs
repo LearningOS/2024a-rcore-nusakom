@@ -14,6 +14,7 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
+use crate::timer::get_time_ms;
 use crate::config::{MAX_APP_NUM, MAX_SYSCALL_NUM};
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
@@ -162,12 +163,6 @@ impl TaskManager {
     }
 
     /// Get the total syscall time for the current task.
-    fn get_task_time(&self) -> usize {
-        let inner = self.inner.exclusive_access();
-        let current = inner.current_task;
-        inner.tasks[current].start_time
-    }
-    /// Get task execution time.
     fn get_task_time(&self) -> usize {
         let inner = self.inner.exclusive_access();
         let current = inner.current_task;
