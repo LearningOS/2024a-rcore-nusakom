@@ -22,16 +22,15 @@ use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
 
-
 pub use context::TaskContext;
 
 /// The task manager, where all the tasks are managed.
 ///
-/// Functions implemented on `TaskManager` deals with all task state transitions
+// Functions implemented on `TaskManager` deals with all task state transitions
 /// and task context switching. For convenience, you can find wrappers around it
 /// in the module level.
 ///
-/// Most of `TaskManager` are hidden behind the field `inner`, to defer
+// Most of `TaskManager` are hidden behind the field `inner`, to defer
 /// borrowing checks to runtime. You can see examples on how to use `inner` in
 /// existing functions on `TaskManager`.
 pub struct TaskManager {
@@ -94,6 +93,12 @@ impl TaskManager {
             __switch(&mut _unused as *mut TaskContext, next_task_cx_ptr);
         }
         panic!("unreachable in run_first_task!");
+    }
+    
+    fn get_current_task_time(&self) -> u64 {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].syscall_time_sum
     }
 
     /// Change the status of current `Running` task into `Ready`.

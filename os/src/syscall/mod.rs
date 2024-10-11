@@ -10,15 +10,15 @@
 //! `sys_` then the name of the syscall. You can find functions like this in
 //! submodules, and you should also implement syscalls this way.
 
-/// write syscall
+/// Write syscall identifier
 const SYSCALL_WRITE: usize = 64;
-/// exit syscall
+/// Exit syscall identifier
 const SYSCALL_EXIT: usize = 93;
-/// yield syscall
+/// Yield syscall identifier
 const SYSCALL_YIELD: usize = 124;
-/// gettime syscall
+/// Get time syscall identifier
 const SYSCALL_GET_TIME: usize = 169;
-/// taskinfo syscall
+/// Task info syscall identifier
 const SYSCALL_TASK_INFO: usize = 410;
 
 mod fs;
@@ -28,15 +28,24 @@ use fs::*;
 use process::*;
 use crate::task::update_syscall_times;
 
-/// handle syscall exception with `syscall_id` and other arguments
-pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
-    update_syscall_times(syscall_id);//系统调用时间和调用次数
+/// Handle syscall exception with `syscall_id` and other arguments
+pub fn syscall(syscall_id: usize, args: [usize; 3]) -> Result<isize, &'static str> {
+    update_syscall_times(syscall_id); // Update syscall times
     match syscall_id {
         SYSCALL_WRITE => sys_write(args[0], args[1] as *const u8, args[2]),
-        SYSCALL_EXIT => sys_exit(args[0] as i32),
-        SYSCALL_YIELD => sys_yield(),
-        SYSCALL_GET_TIME => sys_get_time(args[0] as *mut TimeVal, args[1]),
-        SYSCALL_TASK_INFO => sys_task_info(args[0] as *mut TaskInfo),
-        _ => panic!("Unsupported syscall_id: {}", syscall_id),
+        SYSCALL_EXIT => {
+            let exit_code = args[0] as i32;
+            Ok(sys_exit(exit_code))
+        },
+        SYSCALL_YIELD => Ok(sys_yield()?),
+        SYSCALL_GET_TIME => {
+            let time_val_ptr = args[0] as *mut TimeVal;
+            sys_get_time(time_val_ptr, args[1]).map(|_| 0)
+        },
+        SYSCALL_TASK_INFO => {
+            let task_info_ptr = args[0] as *mut TaskInfo;
+            sys_task_info(task_info_ptr).map(|_| 0)
+        },
+        _ => Err("Unsupported syscall_id"),  // Return an error instead of panicking
     }
 }
