@@ -14,10 +14,10 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
-use crate::timer::get_time_ms;
 use crate::config::{MAX_APP_NUM, MAX_SYSCALL_NUM};
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
+use crate::timer::get_time_ms;
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
@@ -26,11 +26,11 @@ pub use context::TaskContext;
 
 /// The task manager, where all the tasks are managed.
 ///
-// Functions implemented on `TaskManager` deals with all task state transitions
+/// Functions implemented on `TaskManager` deals with all task state transitions
 /// and task context switching. For convenience, you can find wrappers around it
 /// in the module level.
 ///
-// Most of `TaskManager` are hidden behind the field `inner`, to defer
+/// Most of `TaskManager` are hidden behind the field `inner`, to defer
 /// borrowing checks to runtime. You can see examples on how to use `inner` in
 /// existing functions on `TaskManager`.
 pub struct TaskManager {
@@ -54,10 +54,9 @@ lazy_static! {
         let num_app = get_num_app();
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
-            syscall_times: [0; MAX_SYSCALL_NUM],
-            syscall_time_sum: 0, // 新增字段，初始化为0
             task_status: TaskStatus::UnInit,
-            start_time: Default::default(),
+            task_syscall_times: [0; MAX_SYSCALL_NUM],
+            task_time: 0,
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
@@ -83,8 +82,8 @@ impl TaskManager {
     fn run_first_task(&self) -> ! {
         let mut inner = self.inner.exclusive_access();
         let task0 = &mut inner.tasks[0];
-        task0.start_time = get_time_ms();
         task0.task_status = TaskStatus::Running;
+        task0.task_time = get_time_ms();
         let next_task_cx_ptr = &task0.task_cx as *const TaskContext;
         drop(inner);
         let mut _unused = TaskContext::zero_init();
@@ -93,12 +92,6 @@ impl TaskManager {
             __switch(&mut _unused as *mut TaskContext, next_task_cx_ptr);
         }
         panic!("unreachable in run_first_task!");
-    }
-    
-    fn get_current_task_time(&self) -> u64 {
-        let inner = self.inner.exclusive_access();
-        let current = inner.current_task;
-        inner.tasks[current].syscall_time_sum
     }
 
     /// Change the status of current `Running` task into `Ready`.
@@ -132,46 +125,37 @@ impl TaskManager {
         if let Some(next) = self.find_next_task() {
             let mut inner = self.inner.exclusive_access();
             let current = inner.current_task;
-            let current_time = get_time_ms(); // 获取当前时间
-            let time_elapsed = current_time - inner.tasks[current].start_time; // 计算当前任务执行的时间
-            inner.tasks[current].start_time = current_time; // 更新当前任务的开始时间
-            inner.tasks[next].start_time = current_time; // 为下一个任务设置开始时间
             inner.tasks[next].task_status = TaskStatus::Running;
+            inner.tasks[current].task_time = get_time_ms() - inner.tasks[current].task_time;
+            inner.tasks[next].task_time = get_time_ms();
             inner.current_task = next;
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
             drop(inner);
+            // before this, we should drop local variables that must be dropped manually
             unsafe {
                 __switch(current_task_cx_ptr, next_task_cx_ptr);
             }
+            // go back to user mode
         } else {
             panic!("All applications completed!");
         }
     }
 
-    /// Update syscall times and calculate the time for each syscall.
+    fn get_syscall_times(&self) -> [u32; MAX_SYSCALL_NUM] {
+        let inner = self.inner.exclusive_access();
+        inner.tasks[inner.current_task].task_syscall_times
+    }
+
+    fn get_current_task_time(&self) -> usize {
+        let inner = self.inner.exclusive_access();
+        inner.tasks[inner.current_task].task_time
+    }
+
     fn update_syscall_times(&self, syscall_id: usize) {
         let mut inner = self.inner.exclusive_access();
         let current = inner.current_task;
-        let current_time = get_time_ms(); // 获取当前时间
-        let time_elapsed = current_time - inner.tasks[current].start_time; // 计算时间差
-        inner.tasks[current].syscall_times[syscall_id] += 1; // 更新系统调用次数
-        inner.tasks[current].syscall_time_sum += time_elapsed; // 累加系统调用所花费的时间
-        inner.tasks[current].start_time = current_time; // 更新任务的开始时间为当前时间
-    }
-
-    /// Get syscall times for the current task.
-    fn get_syscall_times(&self) -> [u32; MAX_SYSCALL_NUM] {
-        let inner = self.inner.exclusive_access();
-        let current = inner.current_task;
-        inner.tasks[current].syscall_times
-    }
-
-    /// Get the total syscall time for the current task.
-    fn get_task_time(&self) -> usize {
-        let inner = self.inner.exclusive_access();
-        let current = inner.current_task;
-        inner.tasks[current].start_time
+        inner.tasks[current].task_syscall_times[syscall_id] += 1;
     }
 }
 
@@ -208,17 +192,17 @@ pub fn exit_current_and_run_next() {
     run_next_task();
 }
 
-/// Get the current 'Running' task's syscall times.
+/// Get the syscall times of current task.
 pub fn get_syscall_times() -> [u32; MAX_SYSCALL_NUM] {
     TASK_MANAGER.get_syscall_times()
 }
 
-/// Update the current 'Running' task's syscall times.
-pub fn update_syscall_times(syscall_id: usize) {
-    TASK_MANAGER.update_syscall_times(syscall_id);
+/// Get the total running time of current task.
+pub fn get_current_task_time() -> usize {
+    TASK_MANAGER.get_current_task_time()
 }
 
-/// Get the current 'Running' task's time between the system call time and the first time the task is scheduled.
-pub fn get_task_time() -> usize {
-    TASK_MANAGER.get_task_time()
+/// Update the syscall times of current task.
+pub fn update_syscall_times(syscall_id: usize) {
+    TASK_MANAGER.update_syscall_times(syscall_id);
 }
