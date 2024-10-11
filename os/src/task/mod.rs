@@ -21,7 +21,7 @@ use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
 
-use crate::timer::get_time_ms;
+
 pub use context::TaskContext;
 
 /// The task manager, where all the tasks are managed.
@@ -55,6 +55,7 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             syscall_times: [0; MAX_SYSCALL_NUM],
+            syscall_time_sum: 0, // 新增字段，初始化为0
             task_status: TaskStatus::UnInit,
             start_time: Default::default(),
         }; MAX_APP_NUM];
@@ -125,37 +126,48 @@ impl TaskManager {
         if let Some(next) = self.find_next_task() {
             let mut inner = self.inner.exclusive_access();
             let current = inner.current_task;
-            let temp_task_time = inner.tasks[current].start_time;
-            let current_time = get_time_ms();
-            inner.tasks[current].start_time = current_time - temp_task_time;
-            inner.tasks[next].start_time = current_time;
+            let current_time = get_time_ms(); // 获取当前时间
+            let time_elapsed = current_time - inner.tasks[current].start_time; // 计算当前任务执行的时间
+            inner.tasks[current].start_time = current_time; // 更新当前任务的开始时间
+            inner.tasks[next].start_time = current_time; // 为下一个任务设置开始时间
             inner.tasks[next].task_status = TaskStatus::Running;
             inner.current_task = next;
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
             drop(inner);
-            // before this, we should drop local variables that must be dropped manually
             unsafe {
                 __switch(current_task_cx_ptr, next_task_cx_ptr);
             }
-            // go back to user mode
         } else {
             panic!("All applications completed!");
         }
     }
 
+    /// Update syscall times and calculate the time for each syscall.
     fn update_syscall_times(&self, syscall_id: usize) {
         let mut inner = self.inner.exclusive_access();
         let current = inner.current_task;
-        inner.tasks[current].syscall_times[syscall_id] += 1;
+        let current_time = get_time_ms(); // 获取当前时间
+        let time_elapsed = current_time - inner.tasks[current].start_time; // 计算时间差
+        inner.tasks[current].syscall_times[syscall_id] += 1; // 更新系统调用次数
+        inner.tasks[current].syscall_time_sum += time_elapsed; // 累加系统调用所花费的时间
+        inner.tasks[current].start_time = current_time; // 更新任务的开始时间为当前时间
     }
 
+    /// Get syscall times for the current task.
     fn get_syscall_times(&self) -> [u32; MAX_SYSCALL_NUM] {
         let inner = self.inner.exclusive_access();
         let current = inner.current_task;
         inner.tasks[current].syscall_times
     }
 
+    /// Get the total syscall time for the current task.
+    fn get_task_time(&self) -> usize {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].start_time
+    }
+    /// Get task execution time.
     fn get_task_time(&self) -> usize {
         let inner = self.inner.exclusive_access();
         let current = inner.current_task;

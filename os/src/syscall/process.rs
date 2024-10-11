@@ -1,12 +1,9 @@
+//! Process management syscalls 
 use crate::{
     config::MAX_SYSCALL_NUM,
-    task::{
-        exit_current_and_run_next, get_syscall_times, get_task_time, suspend_current_and_run_next,
-        TaskStatus,
-    },
+    task::{exit_current_and_run_next, get_current_task_time, get_syscall_times, suspend_current_and_run_next, TaskStatus, Running},
     timer::get_time_us,
 };
-use crate::task::TaskStatus::Running;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -18,38 +15,44 @@ pub struct TimeVal {
 /// Task information
 #[allow(dead_code)]
 pub struct TaskInfo {
-    /// Task status in it's life cycle
+    /// Task status in its life cycle
     status: TaskStatus,
-    /// The numbers of syscall called by task
+    /// The number of syscalls called by the task
     syscall_times: [u32; MAX_SYSCALL_NUM],
-    /// Total running time of task
+    /// Total running time of the task
     time: usize,
 }
+
 impl TaskInfo {
-    pub fn modify_task_info(task_info:*mut Self)->Option<()>{
-        unsafe{
-            (*task_info).status=Running;
-            (*task_info).syscall_times=get_syscall_times();
-            (*task_info).time=get_task_time();
+    /// Modifies the task info structure with current task data
+    pub fn modify_task_info(task_info: *mut Self) -> Result<(), &'static str> {
+        if task_info.is_null() {
+            return Err("Null pointer for TaskInfo");
         }
-        Some(())
+        unsafe {
+            (*task_info).status = Running;
+            (*task_info).syscall_times = get_syscall_times();
+            (*task_info).time = get_current_task_time();
+        }
+        Ok(())
     }
 }
-/// task exits and submit an exit code
+
+/// Task exits and submits an exit code
 pub fn sys_exit(exit_code: i32) -> ! {
     trace!("[kernel] Application exited with code {}", exit_code);
     exit_current_and_run_next();
     panic!("Unreachable in sys_exit!");
 }
 
-/// current task gives up resources for other tasks
+/// Current task gives up resources for other tasks
 pub fn sys_yield() -> isize {
     trace!("kernel: sys_yield");
     suspend_current_and_run_next();
     0
 }
 
-/// get time with second and microsecond
+/// Get time with second and microsecond
 pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
     let us = get_time_us();
@@ -62,11 +65,11 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     0
 }
 
-/// YOUR JOB: Finish sys_task_info to pass testcases
+/// Retrieves task information and fills the `TaskInfo` struct
 pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
     trace!("kernel: sys_task_info");
-    match TaskInfo::modify_task_info(ti){
-        None => -1,
-        Some(_) => 0
+    match TaskInfo::modify_task_info(ti) {
+        Ok(_) => 0,    // Return 0 for success
+        Err(_) => -1,  // Return -1 for failure (e.g., null pointer)
     }
 }
