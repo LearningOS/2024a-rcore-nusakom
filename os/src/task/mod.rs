@@ -14,9 +14,10 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
-use crate::config::MAX_APP_NUM;
+use crate::config::{MAX_APP_NUM, MAX_SYSCALL_NUM};
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
+use crate::timer::get_time_ms;
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
@@ -48,12 +49,15 @@ pub struct TaskManagerInner {
 }
 
 lazy_static! {
-    /// Global variable: TASK_MANAGER
     pub static ref TASK_MANAGER: TaskManager = {
         let num_app = get_num_app();
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
+            task_syscall_times: [0; MAX_SYSCALL_NUM],
+            syscall_timestamps: [0; MAX_SYSCALL_NUM], // 初始化为 0
+            task_time: 0,
+            first_scheduled_time: None, // 初始化为 None
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
@@ -70,7 +74,6 @@ lazy_static! {
         }
     };
 }
-
 impl TaskManager {
     /// Run the first task in task list.
     ///
@@ -80,15 +83,22 @@ impl TaskManager {
         let mut inner = self.inner.exclusive_access();
         let task0 = &mut inner.tasks[0];
         task0.task_status = TaskStatus::Running;
+        task0.task_time = get_time_ms();
+        
+        // 如果是第一次被调度，记录第一次调度的时间
+        if task0.first_scheduled_time.is_none() {
+            task0.first_scheduled_time = Some(get_time_ms());
+        }
+    
         let next_task_cx_ptr = &task0.task_cx as *const TaskContext;
         drop(inner);
         let mut _unused = TaskContext::zero_init();
-        // before this, we should drop local variables that must be dropped manually
+        
         unsafe {
             __switch(&mut _unused as *mut TaskContext, next_task_cx_ptr);
         }
         panic!("unreachable in run_first_task!");
-    }
+    }    
 
     /// Change the status of current `Running` task into `Ready`.
     fn mark_current_suspended(&self) {
@@ -122,19 +132,66 @@ impl TaskManager {
             let mut inner = self.inner.exclusive_access();
             let current = inner.current_task;
             inner.tasks[next].task_status = TaskStatus::Running;
+            inner.tasks[current].task_time = get_time_ms() - inner.tasks[current].task_time;
+            inner.tasks[next].task_time = get_time_ms();
+            
+            // 如果是第一次被调度，记录第一次调度的时间
+            if inner.tasks[next].first_scheduled_time.is_none() {
+                inner.tasks[next].first_scheduled_time = Some(get_time_ms());
+            }
+    
             inner.current_task = next;
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
             drop(inner);
-            // before this, we should drop local variables that must be dropped manually
+            
             unsafe {
                 __switch(current_task_cx_ptr, next_task_cx_ptr);
             }
-            // go back to user mode
         } else {
             panic!("All applications completed!");
         }
     }
+    
+    fn get_syscall_times(&self) -> [u32; MAX_SYSCALL_NUM] {
+        let inner = self.inner.exclusive_access();
+        inner.tasks[inner.current_task].task_syscall_times
+    }
+
+    fn get_current_task_time(&self) -> usize {
+        let inner = self.inner.exclusive_access();
+        inner.tasks[inner.current_task].task_time
+    }
+
+    fn update_syscall_times(&self, syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].task_syscall_times[syscall_id] += 1;
+        
+        // 记录系统调用的时间戳
+        inner.tasks[current].syscall_timestamps[syscall_id] = get_time_ms();
+    }
+    /// 获取当前任务的系统调用时间戳
+    fn get_syscall_timestamps(&self) -> [usize; MAX_SYSCALL_NUM] {
+        let inner = self.inner.exclusive_access();
+        inner.tasks[inner.current_task].syscall_timestamps
+    }
+
+    /// 获取当前任务第一次调度的时间
+    fn get_first_scheduled_time(&self) -> Option<usize> {
+        let inner = self.inner.exclusive_access();
+        inner.tasks[inner.current_task].first_scheduled_time
+    }
+}
+
+/// 获取当前任务的系统调用时间戳
+pub fn get_syscall_timestamps() -> [usize; MAX_SYSCALL_NUM] {
+    TASK_MANAGER.get_syscall_timestamps()
+}
+
+/// 获取当前任务第一次被调度的时间
+pub fn get_first_scheduled_time() -> Option<usize> {
+    TASK_MANAGER.get_first_scheduled_time()
 }
 
 /// Run the first task in task list.
@@ -168,4 +225,19 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
+}
+
+/// Get the syscall times of current task.
+pub fn get_syscall_times() -> [u32; MAX_SYSCALL_NUM] {
+    TASK_MANAGER.get_syscall_times()
+}
+
+/// Get the total running time of current task.
+pub fn get_current_task_time() -> usize {
+    TASK_MANAGER.get_current_task_time()
+}
+
+/// Update the syscall times of current task.
+pub fn update_syscall_times(syscall_id: usize) {
+    TASK_MANAGER.update_syscall_times(syscall_id);
 }
