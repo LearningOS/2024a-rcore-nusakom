@@ -55,8 +55,11 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
-/// YOUR JOB: Finish sys_task_info to pass testcases
 pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
+    if ti.is_null() {
+        return -1; // 返回错误代码，指示无效的指针
+    }
+
     trace!("kernel: sys_task_info");
     unsafe {
         let current_task = get_current_task();  // 获取当前任务的 TaskControlBlock
@@ -69,5 +72,5 @@ pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
         (*ti).syscall_timestamps = current_task.syscall_timestamps;  // 系统调用时间戳
         (*ti).first_scheduled_time = current_task.first_scheduled_time;  // 任务首次调度时间
     }
-    0
+    0 // 返回成功
 }
