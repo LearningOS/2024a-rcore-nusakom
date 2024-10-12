@@ -21,6 +21,10 @@ pub struct TaskInfo {
     syscall_times: [u32; MAX_SYSCALL_NUM],
     /// Total running time of task
     time: usize,
+    /// 每次系统调用的时间戳
+    syscall_timestamps: [usize; MAX_SYSCALL_NUM],
+    /// 任务第一次被调度的时间
+    first_scheduled_time: Option<usize>,
 }
 
 /// task exits and submit an exit code
@@ -51,12 +55,19 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
+/// YOUR JOB: Finish sys_task_info to pass testcases
 pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
     trace!("kernel: sys_task_info");
     unsafe {
-        (*ti).status = TaskStatus::Running;
-        (*ti).syscall_times = get_syscall_times();
-        (*ti).time = get_current_task_time();
+        let current_task = get_current_task();  // 获取当前任务的 TaskControlBlock
+
+        (*ti).status = current_task.task_status;  // 获取任务的当前状态
+        (*ti).syscall_times = get_syscall_times();  // 获取系统调用次数
+        (*ti).time = get_current_task_time();  // 获取任务的总运行时间
+
+        // 新增部分：填充系统调用的时间戳和首次调度时间
+        (*ti).syscall_timestamps = current_task.syscall_timestamps;  // 系统调用时间戳
+        (*ti).first_scheduled_time = current_task.first_scheduled_time;  // 任务首次调度时间
     }
     0
 }
