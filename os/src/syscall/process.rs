@@ -20,20 +20,20 @@ pub struct TimeVal {
 #[allow(dead_code)]
 pub struct TaskInfo {
     /// Task status in it's life cycle
-    status: TaskStatus,// 任务状态
+    status: TaskStatus,
     /// The numbers of syscall called by task
-    syscall_times: [u32; MAX_SYSCALL_NUM],// 记录每个系统调用的调用次数
+    syscall_times: [u32; MAX_SYSCALL_NUM],
     /// Total running time of task
-    time: usize,// 任务的总运行时间
+    time: usize,
 }
 impl TaskInfo {
     pub fn modify_task_info(task_info:*mut Self)->Option<()>{
         unsafe{
-            (*task_info).status=Running; // 设置任务状态为 Running
-            (*task_info).syscall_times=get_syscall_times();// 获取系统调用次数
-            (*task_info).time=get_task_time();// 获取任务的总运行时间
+            (*task_info).status=Running; 
+            (*task_info).syscall_times=get_syscall_times();
+            (*task_info).time=get_task_time();
         }
-        Some(())// 成功修改后返回 Some
+        Some(())
     }
 }
 /// task exits and submit an exit code
