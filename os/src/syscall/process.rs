@@ -29,7 +29,7 @@ pub struct TaskInfo {
 impl TaskInfo {
     pub fn modify_task_info(task_info:*mut Self)->Option<()>{
         unsafe{
-            (*task_info).status=Running; 
+            (*task_info).status=Running;
             (*task_info).syscall_times=get_syscall_times();
             (*task_info).time=get_task_time();
         }
@@ -67,7 +67,7 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
 pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
     trace!("kernel: sys_task_info");
     match TaskInfo::modify_task_info(ti){
-        None => -1,// 如果信息填充失败，返回 -1
-        Some(_) => 0// 成功填充任务信息，返回 0
+        None => -1,
+        Some(_) => 0
     }
 }
