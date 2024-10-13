@@ -15,7 +15,7 @@ mod switch;
 mod task;
 
 use crate::config::{MAX_APP_NUM, MAX_SYSCALL_NUM};
-use crate::loader::{get_num_app,init_app_cx};
+use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
 use lazy_static::*;
 use switch::__switch;
@@ -26,13 +26,6 @@ pub use context::TaskContext;
 
 /// The task manager, where all the tasks are managed.
 ///
-/// Functions implemented on `TaskManager` deals with all task state transitions
-/// and task context switching. For convenience, you can find wrappers around it
-/// in the module level.
-///
-/// Most of `TaskManager` are hidden behind the field `inner`, to defer
-/// borrowing checks to runtime. You can see examples on how to use `inner` in
-/// existing functions on `TaskManager`.
 pub struct TaskManager {
     /// total number of tasks
     num_app: usize,
@@ -54,7 +47,7 @@ lazy_static! {
         let num_app = get_num_app();
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
-            task_syscall_times: [0;MAX_SYSCALL_NUM],
+            task_syscall_times: [0; MAX_SYSCALL_NUM],
             task_status: TaskStatus::UnInit,
             task_time: Default::default(),
         }; MAX_APP_NUM];
@@ -76,9 +69,6 @@ lazy_static! {
 
 impl TaskManager {
     /// Run the first task in task list.
-    ///
-    /// Generally, the first task in task list is an idle task (we call it zero process later).
-    /// But in ch3, we load apps statically, so the first task is a real app.
     fn run_first_task(&self) -> ! {
         let mut inner = self.inner.exclusive_access();
         let task0 = &mut inner.tasks[0];
@@ -87,7 +77,6 @@ impl TaskManager {
         let next_task_cx_ptr = &task0.task_cx as *const TaskContext;
         drop(inner);
         let mut _unused = TaskContext::zero_init();
-        // before this, we should drop local variables that must be dropped manually
         unsafe {
             __switch(&mut _unused as *mut TaskContext, next_task_cx_ptr);
         }
@@ -109,8 +98,6 @@ impl TaskManager {
     }
 
     /// Find next task to run and return task id.
-    ///
-    /// In this case, we only return the first `Ready` task in task list.
     fn find_next_task(&self) -> Option<usize> {
         let inner = self.inner.exclusive_access();
         let current = inner.current_task;
@@ -134,25 +121,26 @@ impl TaskManager {
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
             drop(inner);
-            // before this, we should drop local variables that must be dropped manually
             unsafe {
                 __switch(current_task_cx_ptr, next_task_cx_ptr);
             }
-            // go back to user mode
         } else {
             panic!("All applications completed!");
         }
     }
+
     fn update_syscall_times(&self, syscall_id: usize) {
         let mut inner = self.inner.exclusive_access();
         let current = inner.current_task;
         inner.tasks[current].task_syscall_times[syscall_id] += 1;
     }
+
     fn get_syscall_times(&self) -> [u32; MAX_SYSCALL_NUM] {
         let inner = self.inner.exclusive_access();
         let current = inner.current_task;
         inner.tasks[current].task_syscall_times
     }
+
     fn get_task_time(&self) -> usize {
         let inner = self.inner.exclusive_access();
         let current = inner.current_task;
