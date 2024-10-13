@@ -14,6 +14,7 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
+use crate::task::MAX_SYSCALL_NUM;
 use crate::config::{MAX_APP_NUM, MAX_SYSCALL_NUM};
 use crate::loader::{get_num_app,init_app_cx};
 use crate::sync::UPSafeCell;
@@ -54,9 +55,9 @@ lazy_static! {
         let num_app = get_num_app();
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
-            task_syscall_times: [0;MAX_SYSCALL_NUM],
+            task_syscall_times: [0;MAX_SYSCALL_NUM],// 初始化为 0
             task_status: TaskStatus::UnInit,
-            task_time: Default::default(),
+            task_time: Default::default(),// 初始化为 0
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
@@ -127,8 +128,8 @@ impl TaskManager {
             let current = inner.current_task;
             let temp_task_time = inner.tasks[current].task_time;
             let current_time = get_time_ms();
-            inner.tasks[current].task_time = current_time - temp_task_time;
-            inner.tasks[next].task_time = current_time;
+            inner.tasks[current].task_time = current_time - temp_task_time; // 更新当前任务运行时间
+            inner.tasks[next].task_time = current_time;// 记录下一个任务开始时间
             inner.tasks[next].task_status = TaskStatus::Running;
             inner.current_task = next;
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
@@ -146,12 +147,13 @@ impl TaskManager {
     fn update_syscall_times(&self, syscall_id: usize) {
         let mut inner = self.inner.exclusive_access();
         let current = inner.current_task;
-        inner.tasks[current].task_syscall_times[syscall_id] += 1;
+        inner.tasks[current].syscall_times[syscall_id] += 1;// 更新系统调用次数
     }
     fn get_syscall_times(&self) -> [u32; MAX_SYSCALL_NUM] {
+        //获取当前任务的系统调用次数
         let inner = self.inner.exclusive_access();
         let current = inner.current_task;
-        inner.tasks[current].task_syscall_times
+        inner.tasks[current].syscall_times
     }
     fn get_task_time(&self) -> usize {
         let inner = self.inner.exclusive_access();
@@ -200,6 +202,7 @@ pub fn get_syscall_times() -> [u32; MAX_SYSCALL_NUM] {
 
 /// Update the current 'Running' task's syscall times.
 pub fn update_syscall_times(syscall_id: usize) {
+    //// 系统调用后更新系统调用次数
     TASK_MANAGER.update_syscall_times(syscall_id);
 }
 
