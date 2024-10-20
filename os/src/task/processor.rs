@@ -7,7 +7,11 @@
 use super::__switch;
 use super::{fetch_task, TaskStatus};
 use super::{TaskContext, TaskControlBlock};
+use crate::config::PAGE_SIZE;
+use crate::mm::{MapPermission, VirtAddr};
 use crate::sync::UPSafeCell;
+use crate::syscall::process::TaskInfo;
+use crate::timer::get_time_ms;
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
 use lazy_static::*;
@@ -100,6 +104,91 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
         .get_trap_cx()
 }
 
+/// Get current task info
+pub fn current_task_info() -> TaskInfo {
+    let current_task_control_block = current_task().unwrap();
+    let current_task = current_task_control_block.inner.exclusive_access();
+
+    TaskInfo {
+        status: current_task.task_status,
+        syscall_times: current_task.task_syscall_trace,
+        time: {
+            let start = current_task.task_start_time;
+            let end = current_task.task_lastest_syscall_time;
+            end - start
+        },
+    }
+}
+
+/// Allocate memory
+pub fn allocate_memory(start: usize, len: usize, port: usize) -> isize {
+    // check
+    if start % PAGE_SIZE != 0 {
+        return -1;
+    }
+
+    if port & !0x7 != 0 || port & 0x7 == 0 {
+        return -1;
+    }
+
+    let start_address = VirtAddr::from(start);
+    let end_address = VirtAddr::from(start + len);
+
+    let current_task_control_block = current_task().unwrap();
+    let mut current_task = current_task_control_block.inner.exclusive_access();
+
+    if current_task
+        .memory_set
+        .include_allocated(start_address, end_address)
+    {
+        return -1;
+    }
+
+    let permissions = MapPermission::from_bits((port as u8) << 1).unwrap() | MapPermission::U;
+
+    current_task
+        .memory_set
+        .insert_framed_area(start_address, end_address, permissions);
+
+    0
+}
+
+/// Free memory
+pub fn free_memory(start: usize, len: usize) -> isize {
+    if start % PAGE_SIZE != 0 {
+        return -1;
+    }
+
+    let start_address = VirtAddr::from(start);
+    let end_address = VirtAddr::from(start + len);
+
+    if !start_address.aligned() {
+        return -1;
+    }
+
+    if !end_address.aligned() {
+        return -1;
+    }
+
+    let current_task_control_block = current_task().unwrap();
+    let mut current_task = current_task_control_block.inner.exclusive_access();
+
+    current_task
+        .memory_set
+        .free_framed_area(start_address, end_address);
+
+    0
+}
+
+/// Update task info
+pub fn update_task_info(syscall_id: usize) {
+    let current_task_control_block = current_task().unwrap();
+    let mut current_task = current_task_control_block.inner.exclusive_access();
+
+    current_task.task_lastest_syscall_time = get_time_ms();
+    current_task.task_syscall_trace[syscall_id] += 1;
+}
+
 ///Return to idle control flow for new scheduling
 pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
     let mut processor = PROCESSOR.exclusive_access();
@@ -108,4 +197,17 @@ pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
     unsafe {
         __switch(switched_task_cx_ptr, idle_task_cx_ptr);
     }
+}
+
+/// Set task priority
+pub fn set_priority(priority: isize) -> isize {
+    if priority < 2 {
+        return -1;
+    }
+
+    let cpu_cur_task = current_task().unwrap();
+    let mut task_inner = cpu_cur_task.inner_exclusive_access();
+    task_inner.priority = priority;
+
+    task_inner.priority
 }

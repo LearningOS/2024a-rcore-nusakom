@@ -1,9 +1,10 @@
 //! Types related to task management & Functions for completely changing TCB
 use super::TaskContext;
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
-use crate::config::TRAP_CONTEXT_BASE;
+use crate::config::{MAX_SYSCALL_NUM, TRAP_CONTEXT_BASE};
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
+use crate::timer::get_time_ms;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
@@ -21,7 +22,7 @@ pub struct TaskControlBlock {
     pub kernel_stack: KernelStack,
 
     /// Mutable
-    inner: UPSafeCell<TaskControlBlockInner>,
+    pub inner: UPSafeCell<TaskControlBlockInner>,
 }
 
 impl TaskControlBlock {
@@ -68,6 +69,21 @@ pub struct TaskControlBlockInner {
 
     /// Program break
     pub program_brk: usize,
+
+    /// The start time of task
+    pub task_start_time: usize,
+
+    /// The end time of task syscall
+    pub task_lastest_syscall_time: usize,
+
+    /// The numbers of syscall called by task
+    pub task_syscall_trace: [u32; MAX_SYSCALL_NUM],
+
+    /// The stride of the task
+    pub stride: isize,
+
+    /// The priority of the task
+    pub priority: isize,
 }
 
 impl TaskControlBlockInner {
@@ -118,6 +134,11 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    task_start_time: get_time_ms(),
+                    task_lastest_syscall_time: get_time_ms(),
+                    task_syscall_trace: [0; MAX_SYSCALL_NUM],
+                    stride: 0,
+                    priority: 0,
                 })
             },
         };
@@ -191,6 +212,11 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
+                    task_start_time: parent_inner.task_start_time,
+                    task_lastest_syscall_time: parent_inner.task_lastest_syscall_time,
+                    task_syscall_trace: parent_inner.task_syscall_trace,
+                    stride: parent_inner.stride,
+                    priority: parent_inner.priority,
                 })
             },
         });
